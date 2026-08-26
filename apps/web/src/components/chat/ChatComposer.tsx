@@ -2951,6 +2951,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ],
   );
 
+  const isCodexRealtimeVoiceActive =
+    codexRealtimeVoice.status === "connecting" ||
+    codexRealtimeVoice.status === "live" ||
+    codexRealtimeVoice.status === "playback-blocked";
+  const codexVoiceControl =
+    routeKind === "server" &&
+    selectedProvider === ProviderDriverKind.make("codex") &&
+    activeThreadId ? (
+      <ComposerVoiceControl
+        voice={codexRealtimeVoice}
+        disabled={
+          environmentUnavailable !== null ||
+          isConnecting ||
+          noProviderAvailable ||
+          projectSelectionRequired ||
+          !codexRealtimeVoiceVersionSupported
+        }
+        {...(!codexRealtimeVoiceVersionSupported
+          ? { disabledReason: "Update Codex to 0.145.0 or newer to use voice" }
+          : {})}
+      />
+    ) : null;
+
   // Render
   // ------------------------------------------------------------------
   return (
@@ -3440,6 +3463,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   >
                     {inlineTasksBadge}
                     {inlineStashBadge}
+                    {isCodexRealtimeVoiceActive ? codexVoiceControl : null}
                     <ComposerPrimaryActions
                       compact
                       pendingAction={pendingPrimaryAction}
@@ -3469,6 +3493,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <ComposerPromptLengthValidation
               message={providerInputSubmissionError ?? composerSubmissionError}
             />
+
+            {(isComposerCollapsedMobile || isComposerApprovalState) &&
+            isCodexRealtimeVoiceActive ? (
+              <div
+                data-chat-composer-voice-fallback="true"
+                className="flex items-center justify-end px-3 pb-3 sm:px-4 sm:pb-4"
+              >
+                {codexVoiceControl}
+              </div>
+            ) : null}
 
             {/* Bottom toolbar */}
             {isComposerCollapsedMobile || isComposerApprovalState ? null : (
@@ -3565,23 +3599,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                   {showMobilePendingAnswerActions ? null : inlineStashBadge}
-                  {routeKind === "server" &&
-                  selectedProvider === ProviderDriverKind.make("codex") &&
-                  activeThreadId ? (
-                    <ComposerVoiceControl
-                      voice={codexRealtimeVoice}
-                      disabled={
-                        environmentUnavailable !== null ||
-                        isConnecting ||
-                        noProviderAvailable ||
-                        projectSelectionRequired ||
-                        !codexRealtimeVoiceVersionSupported
-                      }
-                      {...(!codexRealtimeVoiceVersionSupported
-                        ? { disabledReason: "Update Codex to 0.145.0 or newer to use voice" }
-                        : {})}
-                    />
-                  ) : null}
+                  {showMobilePendingAnswerActions && isCodexRealtimeVoiceActive
+                    ? null
+                    : codexVoiceControl}
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     activeContextWindow={activeContextWindow}
