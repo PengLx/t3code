@@ -121,6 +121,40 @@ export const ProviderUploadFeedbackResult = Schema.Struct({
 });
 export type ProviderUploadFeedbackResult = typeof ProviderUploadFeedbackResult.Type;
 
+const RealtimeSessionDescription = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256 * 1024),
+);
+
+export const ProviderRealtimeVoiceStartInput = Schema.Struct({
+  threadId: ThreadId,
+  sdp: RealtimeSessionDescription,
+});
+export type ProviderRealtimeVoiceStartInput = typeof ProviderRealtimeVoiceStartInput.Type;
+
+export const ProviderRealtimeVoiceStartResult = Schema.Struct({
+  sdp: RealtimeSessionDescription,
+});
+export type ProviderRealtimeVoiceStartResult = typeof ProviderRealtimeVoiceStartResult.Type;
+
+export const ProviderRealtimeVoiceStopInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type ProviderRealtimeVoiceStopInput = typeof ProviderRealtimeVoiceStopInput.Type;
+
+export class ProviderRealtimeVoiceError extends Schema.TaggedErrorClass<ProviderRealtimeVoiceError>()(
+  "ProviderRealtimeVoiceError",
+  {
+    threadId: ThreadId,
+    operation: Schema.Literals(["start", "stop"]),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Failed to ${this.operation} realtime voice for thread ${this.threadId}.`;
+  }
+}
+
 export class ProviderUploadFeedbackError extends Schema.TaggedErrorClass<ProviderUploadFeedbackError>()(
   "ProviderUploadFeedbackError",
   {

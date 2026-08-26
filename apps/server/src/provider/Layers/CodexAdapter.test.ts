@@ -108,6 +108,10 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
     Promise.resolve({ threadId: "provider-thread-1" }),
   );
 
+  public readonly startRealtimeVoiceImpl = vi.fn((sdp: string) => Promise.resolve(sdp));
+
+  public readonly stopRealtimeVoiceImpl = vi.fn(() => Promise.resolve(undefined));
+
   public readonly respondToRequestImpl = vi.fn(
     (_requestId: ApprovalRequestId, _decision: ProviderApprovalDecision): Promise<void> =>
       Promise.resolve(undefined),
@@ -149,6 +153,12 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   uploadFeedback(reason?: string) {
     return Effect.promise(() => this.uploadFeedbackImpl(reason));
   }
+
+  startRealtimeVoice(sdp: string) {
+    return Effect.promise(() => this.startRealtimeVoiceImpl(sdp));
+  }
+
+  stopRealtimeVoice = Effect.promise(() => this.stopRealtimeVoiceImpl());
 
   respondToRequest(requestId: ApprovalRequestId, decision: ProviderApprovalDecision) {
     return Effect.promise(() => this.respondToRequestImpl(requestId, decision));
@@ -369,6 +379,27 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
 
       NodeAssert.equal(result._tag, "Failure");
       NodeAssert.equal(result.failure._tag, "ProviderAdapterSessionNotFoundError");
+    }),
+  );
+
+  it.effect("routes realtime voice signaling through the active Codex runtime", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const threadId = asThreadId("thread-voice");
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      NodeAssert.ok(runtime);
+
+      const result = yield* adapter.startRealtimeVoice({ threadId, sdp: "offer-sdp" });
+      yield* adapter.stopRealtimeVoice({ threadId });
+
+      NodeAssert.deepStrictEqual(result, { sdp: "offer-sdp" });
+      NodeAssert.deepStrictEqual(runtime.startRealtimeVoiceImpl.mock.calls, [["offer-sdp"]]);
+      NodeAssert.equal(runtime.stopRealtimeVoiceImpl.mock.calls.length, 1);
     }),
   );
 

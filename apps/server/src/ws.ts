@@ -44,6 +44,7 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  ProviderRealtimeVoiceError,
   ProviderUploadFeedbackError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
@@ -1597,6 +1598,36 @@ const makeWsRpcLayer = (
                 (cause) =>
                   new ProviderUploadFeedbackError({
                     threadId: input.threadId,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "provider" },
+          ),
+        [WS_METHODS.providerRealtimeVoiceStart]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerRealtimeVoiceStart,
+            providerService.startRealtimeVoice(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderRealtimeVoiceError({
+                    threadId: input.threadId,
+                    operation: "start",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "provider" },
+          ),
+        [WS_METHODS.providerRealtimeVoiceStop]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerRealtimeVoiceStop,
+            providerService.stopRealtimeVoice(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderRealtimeVoiceError({
+                    threadId: input.threadId,
+                    operation: "stop",
                     cause,
                   }),
               ),

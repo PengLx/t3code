@@ -9,12 +9,13 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderTurnStartResult,
+  ProviderRealtimeVoiceStartInput,
+  ProviderRealtimeVoiceStartResult,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
 } from "@t3tools/contracts";
 import {
   ApprovalRequestId,
-  EnvironmentId,
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -206,6 +207,18 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
       Effect.succeed({ feedbackId: `feedback-${input.threadId}` }),
   );
 
+  const startRealtimeVoice = vi.fn(
+    (
+      input: ProviderRealtimeVoiceStartInput,
+    ): Effect.Effect<ProviderRealtimeVoiceStartResult, ProviderAdapterError> =>
+      Effect.succeed({ sdp: `answer:${input.sdp}` }),
+  );
+
+  const stopRealtimeVoice = vi.fn(
+    (_input: { readonly threadId: ThreadId }): Effect.Effect<void, ProviderAdapterError> =>
+      Effect.void,
+  );
+
   const stopAll = vi.fn(
     (): Effect.Effect<void, ProviderAdapterError> =>
       Effect.sync(() => {
@@ -228,7 +241,7 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     hasSession,
     readThread,
     rollbackThread,
-    ...(provider === CODEX_DRIVER ? { uploadFeedback } : {}),
+    ...(provider === CODEX_DRIVER ? { uploadFeedback, startRealtimeVoice, stopRealtimeVoice } : {}),
     stopAll,
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
@@ -265,6 +278,8 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     readThread,
     rollbackThread,
     uploadFeedback,
+    startRealtimeVoice,
+    stopRealtimeVoice,
     stopAll,
   };
 }
@@ -1035,6 +1050,78 @@ routing.layer("ProviderServiceLive routing", (it) => {
       assert.deepStrictEqual(routing.codex.uploadFeedback.mock.calls, [
         [{ threadId, reason: "The agent stopped early." }],
       ]);
+    }),
+  );
+
+  it.effect("routes realtime voice signaling to the Codex adapter", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-voice-route");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      routing.codex.startRealtimeVoice.mockClear();
+      routing.codex.stopRealtimeVoice.mockClear();
+
+      const result = yield* provider.startRealtimeVoice({ threadId, sdp: "offer-sdp" });
+      yield* provider.stopRealtimeVoice({ threadId });
+
+      assert.deepStrictEqual(result, { sdp: "answer:offer-sdp" });
+      assert.deepStrictEqual(routing.codex.startRealtimeVoice.mock.calls, [
+        [{ threadId, sdp: "offer-sdp" }],
+      ]);
+      assert.deepStrictEqual(routing.codex.stopRealtimeVoice.mock.calls, [[{ threadId }]]);
+    }),
+  );
+
+  it.effect("recovers a stopped Codex session before starting realtime voice", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-voice-recover");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: "/tmp/voice-project",
+        runtimeMode: "full-access",
+      });
+      yield* routing.codex.stopSession(threadId);
+      routing.codex.startSession.mockClear();
+      routing.codex.startRealtimeVoice.mockClear();
+
+      const result = yield* provider.startRealtimeVoice({ threadId, sdp: "offer-sdp" });
+
+      assert.deepStrictEqual(result, { sdp: "answer:offer-sdp" });
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      assert.deepStrictEqual(routing.codex.startRealtimeVoice.mock.calls, [
+        [{ threadId, sdp: "offer-sdp" }],
+      ]);
+    }),
+  );
+
+  it.effect("rejects realtime voice for unsupported providers without restarting them", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-voice-unsupported");
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* routing.claude.stopSession(threadId);
+      routing.claude.startSession.mockClear();
+
+      const error = yield* provider
+        .startRealtimeVoice({ threadId, sdp: "offer-sdp" })
+        .pipe(Effect.flip);
+
+      assert.instanceOf(error, ProviderValidationError);
+      assert.include(error.issue, "does not support realtime voice");
+      assert.equal(routing.claude.startSession.mock.calls.length, 0);
     }),
   );
 

@@ -13,6 +13,9 @@ import type {
   ProviderDriverKind,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
+  ProviderRealtimeVoiceStartInput,
+  ProviderRealtimeVoiceStartResult,
+  ProviderRealtimeVoiceStopInput,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -69,6 +72,20 @@ export interface ProviderAdapterShape<TError> {
    * Interrupt an active turn.
    */
   readonly interruptTurn: (threadId: ThreadId, turnId?: TurnId) => Effect.Effect<void, TError>;
+
+  /**
+   * Start a provider-native realtime voice session when supported.
+   */
+  readonly startRealtimeVoice?: (
+    input: ProviderRealtimeVoiceStartInput,
+  ) => Effect.Effect<ProviderRealtimeVoiceStartResult, TError>;
+
+  /**
+   * Stop a provider-native realtime voice session when supported.
+   */
+  readonly stopRealtimeVoice?: (
+    input: ProviderRealtimeVoiceStopInput,
+  ) => Effect.Effect<void, TError>;
 
   /**
    * Respond to an interactive approval request.

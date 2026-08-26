@@ -75,6 +75,10 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
+  ProviderRealtimeVoiceError,
+  ProviderRealtimeVoiceStartInput,
+  ProviderRealtimeVoiceStartResult,
+  ProviderRealtimeVoiceStopInput,
   ProviderUploadFeedbackError,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
@@ -228,6 +232,8 @@ export const WS_METHODS = {
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
+  providerRealtimeVoiceStart: "provider.realtimeVoice.start",
+  providerRealtimeVoiceStop: "provider.realtimeVoice.stop",
 
   // VCS methods
   vcsPull: "vcs.pull",
@@ -700,6 +706,17 @@ export const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFee
   error: Schema.Union([ProviderUploadFeedbackError, EnvironmentAuthorizationError]),
 });
 
+export const WsProviderRealtimeVoiceStartRpc = Rpc.make(WS_METHODS.providerRealtimeVoiceStart, {
+  payload: ProviderRealtimeVoiceStartInput,
+  success: ProviderRealtimeVoiceStartResult,
+  error: Schema.Union([ProviderRealtimeVoiceError, EnvironmentAuthorizationError]),
+});
+
+export const WsProviderRealtimeVoiceStopRpc = Rpc.make(WS_METHODS.providerRealtimeVoiceStop, {
+  payload: ProviderRealtimeVoiceStopInput,
+  error: Schema.Union([ProviderRealtimeVoiceError, EnvironmentAuthorizationError]),
+});
+
 export const WsSubscribeVcsStatusRpc = Rpc.make(WS_METHODS.subscribeVcsStatus, {
   payload: VcsStatusInput,
   success: VcsStatusStreamEvent,
@@ -1072,6 +1089,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
   WsProviderUploadFeedbackRpc,
+  WsProviderRealtimeVoiceStartRpc,
+  WsProviderRealtimeVoiceStopRpc,
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,

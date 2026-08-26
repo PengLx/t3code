@@ -1870,6 +1870,27 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       ),
     );
 
+  const startRealtimeVoice: CodexAdapterShape["startRealtimeVoice"] = (input) =>
+    requireSession(input.threadId).pipe(
+      Effect.flatMap((session) => session.runtime.startRealtimeVoice(input.sdp)),
+      Effect.map((sdp) => ({ sdp })),
+      Effect.mapError((cause) =>
+        cause._tag === "ProviderAdapterSessionNotFoundError"
+          ? cause
+          : mapCodexRuntimeError(input.threadId, "thread/realtime/start", cause),
+      ),
+    );
+
+  const stopRealtimeVoice: CodexAdapterShape["stopRealtimeVoice"] = (input) =>
+    requireSession(input.threadId).pipe(
+      Effect.flatMap((session) => session.runtime.stopRealtimeVoice),
+      Effect.mapError((cause) =>
+        cause._tag === "ProviderAdapterSessionNotFoundError"
+          ? cause
+          : mapCodexRuntimeError(input.threadId, "thread/realtime/stop", cause),
+      ),
+    );
+
   const readThread: CodexAdapterShape["readThread"] = (threadId) =>
     requireSession(threadId).pipe(
       Effect.flatMap((session) => session.runtime.readThread),
@@ -2005,6 +2026,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     startSession,
     sendTurn,
     interruptTurn,
+    startRealtimeVoice,
+    stopRealtimeVoice,
     readThread,
     rollbackThread,
     uploadFeedback,

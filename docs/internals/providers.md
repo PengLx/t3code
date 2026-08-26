@@ -65,6 +65,21 @@ Provider output comes back as internal commands such as `thread.message.assistan
 `thread.session.set`, which clients observe through `orchestration.subscribeThread`. See
 [overview.md](./overview.md) for the command/event loop.
 
+### Codex realtime voice
+
+Codex voice is deliberately an ephemeral provider operation rather than an orchestration command.
+The web or desktop client creates a WebRTC offer with its microphone track and the `oai-events`
+data channel, then calls `provider.realtimeVoice.start`. `ProviderService` routes that offer to the
+active Codex adapter, recovering the bound session when needed. The Codex session runtime starts
+`thread/realtime/start` with protocol v3 and returns the SDP notification as the RPC answer. Stop is
+the matching `provider.realtimeVoice.stop` / `thread/realtime/stop` pair.
+
+Only SDP signaling crosses the T3 WebSocket. Realtime audio goes directly between the client and
+OpenAI over WebRTC; it is not proxied or persisted by the T3 server. Closing the client control,
+changing threads or providers, losing the peer connection, or closing the provider runtime all
+stop the ephemeral session. Other provider adapters leave the optional realtime operations
+unsupported, and the native mobile clients do not expose the control.
+
 ## Server-side workers
 
 Provider work flows through three queue-backed workers. All three are built with

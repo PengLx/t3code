@@ -4,6 +4,9 @@ import * as Schema from "effect/Schema";
 import { ThreadId } from "./baseSchemas.ts";
 import {
   ProviderEvent,
+  ProviderRealtimeVoiceError,
+  ProviderRealtimeVoiceStartInput,
+  ProviderRealtimeVoiceStartResult,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -18,6 +21,12 @@ const decodeProviderSession = Schema.decodeUnknownSync(ProviderSession);
 const decodeProviderEvent = Schema.decodeUnknownSync(ProviderEvent);
 const decodeProviderUploadFeedbackInput = Schema.decodeUnknownSync(ProviderUploadFeedbackInput);
 const decodeProviderUploadFeedbackResult = Schema.decodeUnknownSync(ProviderUploadFeedbackResult);
+const decodeProviderRealtimeVoiceStartInput = Schema.decodeUnknownSync(
+  ProviderRealtimeVoiceStartInput,
+);
+const decodeProviderRealtimeVoiceStartResult = Schema.decodeUnknownSync(
+  ProviderRealtimeVoiceStartResult,
+);
 
 function getOptionValue(
   options: ReadonlyArray<{ id: string; value: unknown }> | undefined,
@@ -188,6 +197,36 @@ describe("provider feedback", () => {
     expect(error.threadId).toBe("thread-1");
     expect(error.cause).toBe(cause);
     expect(error.message).toBe("Failed to upload feedback for thread thread-1.");
+    expect(error.message).not.toContain("provider request secret");
+  });
+});
+
+describe("provider realtime voice", () => {
+  it("accepts bounded WebRTC offer and answer descriptions", () => {
+    expect(
+      decodeProviderRealtimeVoiceStartInput({ threadId: "thread-1", sdp: "offer-sdp" }),
+    ).toEqual({ threadId: "thread-1", sdp: "offer-sdp" });
+    expect(decodeProviderRealtimeVoiceStartResult({ sdp: "answer-sdp" })).toEqual({
+      sdp: "answer-sdp",
+    });
+  });
+
+  it("rejects empty session descriptions", () => {
+    expect(() =>
+      decodeProviderRealtimeVoiceStartInput({ threadId: "thread-1", sdp: "" }),
+    ).toThrow();
+    expect(() => decodeProviderRealtimeVoiceStartResult({ sdp: "" })).toThrow();
+  });
+
+  it("does not expose upstream request details in its message", () => {
+    const cause = new Error("provider request secret");
+    const error = new ProviderRealtimeVoiceError({
+      threadId: ThreadId.make("thread-1"),
+      operation: "start",
+      cause,
+    });
+
+    expect(error.message).toBe("Failed to start realtime voice for thread thread-1.");
     expect(error.message).not.toContain("provider request secret");
   });
 });

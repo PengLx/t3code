@@ -210,5 +210,17 @@ export function createThreadEnvironmentAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    startRealtimeVoice: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:start-realtime-voice",
+      tag: WS_METHODS.providerRealtimeVoiceStart,
+      scheduler,
+      concurrency,
+    }),
+    stopRealtimeVoice: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:stop-realtime-voice",
+      tag: WS_METHODS.providerRealtimeVoiceStop,
+      scheduler,
+      concurrency,
+    }),
   };
 }

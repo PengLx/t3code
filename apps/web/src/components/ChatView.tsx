@@ -398,6 +398,7 @@ import {
   serverUpdateGuidance,
 } from "../versionSkew";
 import { useAssetUrls } from "../assets/assetUrls";
+import { useCodexRealtimeVoice } from "../hooks/useCodexRealtimeVoice";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
@@ -2313,6 +2314,14 @@ function ChatViewContent(props: ChatViewProps) {
     selectedProviderByThreadId ?? threadProvider,
   );
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
+  const codexRealtimeVoice = useCodexRealtimeVoice({
+    environmentId,
+    threadId: routeKind === "server" ? activeThreadId : null,
+    enabled:
+      routeKind === "server" &&
+      selectedProvider === ProviderDriverKind.make("codex") &&
+      activeEnvironmentUnavailableState === null,
+  });
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const activeContextWindow = useMemo(
@@ -7072,6 +7081,7 @@ function ChatViewContent(props: ChatViewProps) {
                               activeProject?.defaultModelSelection
                             }
                             activeThreadModelSelection={activeThread?.modelSelection}
+                            codexRealtimeVoice={codexRealtimeVoice}
                             activeContextWindow={activeContextWindow}
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}

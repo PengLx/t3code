@@ -14,6 +14,9 @@
 import type {
   ProviderInterruptTurnInput,
   ProviderInstanceId,
+  ProviderRealtimeVoiceStartInput,
+  ProviderRealtimeVoiceStartResult,
+  ProviderRealtimeVoiceStopInput,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderRuntimeEvent,
@@ -58,6 +61,14 @@ export interface ProviderServiceShape {
    */
   readonly interruptTurn: (
     input: ProviderInterruptTurnInput,
+  ) => Effect.Effect<void, ProviderServiceError>;
+
+  readonly startRealtimeVoice: (
+    input: ProviderRealtimeVoiceStartInput,
+  ) => Effect.Effect<ProviderRealtimeVoiceStartResult, ProviderServiceError>;
+
+  readonly stopRealtimeVoice: (
+    input: ProviderRealtimeVoiceStopInput,
   ) => Effect.Effect<void, ProviderServiceError>;
 
   /**

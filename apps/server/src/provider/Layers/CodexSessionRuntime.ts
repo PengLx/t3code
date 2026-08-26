@@ -25,6 +25,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -191,6 +192,8 @@ export interface CodexSessionRuntimeShape {
     input: CodexSessionRuntimeSendTurnInput,
   ) => Effect.Effect<ProviderTurnStartResult, CodexSessionRuntimeError>;
   readonly interruptTurn: (turnId?: TurnId) => Effect.Effect<void, CodexSessionRuntimeError>;
+  readonly startRealtimeVoice: (sdp: string) => Effect.Effect<string, CodexSessionRuntimeError>;
+  readonly stopRealtimeVoice: Effect.Effect<void, CodexSessionRuntimeError>;
   readonly readThread: Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
   readonly rollbackThread: (
     numTurns: number,
@@ -208,6 +211,15 @@ export interface CodexSessionRuntimeShape {
   ) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
+}
+
+export function buildCodexRealtimeStartParams(threadId: string, sdp: string) {
+  return {
+    threadId,
+    outputModality: "audio",
+    version: "v3",
+    transport: { type: "webrtc", sdp },
+  } as const;
 }
 
 export type CodexSessionRuntimeError =
@@ -1130,6 +1142,7 @@ export const makeCodexSessionRuntime = (
     const collabChildLiveTurnsRef = yield* Ref.make(new Map<string, string>());
     const suppressMemoryConsolidationNotification = makeMemoryConsolidationNotificationFilter();
     const closedRef = yield* Ref.make(false);
+    const pendingRealtimeSdpRef = yield* Ref.make<Deferred.Deferred<string> | null>(null);
 
     // `~` is not shell-expanded when env vars are set via
     // `child_process.spawn`; `expandHomePath` lets a configured
@@ -1712,6 +1725,23 @@ export const makeCodexSessionRuntime = (
       ),
     );
 
+    yield* client.handleServerNotification("thread/realtime/sdp", (payload) =>
+      currentSessionProviderThreadId.pipe(
+        Effect.flatMap((providerThreadId) => {
+          if (providerThreadId && payload.threadId !== providerThreadId) {
+            return Effect.void;
+          }
+          return Ref.get(pendingRealtimeSdpRef).pipe(
+            Effect.flatMap((pending) =>
+              pending === null
+                ? Effect.void
+                : Deferred.succeed(pending, payload.sdp).pipe(Effect.asVoid),
+            ),
+          );
+        }),
+      ),
+    );
+
     yield* client.handleServerRequest("item/commandExecution/requestApproval", (payload) =>
       Effect.gen(function* () {
         const requestId = ApprovalRequestId.make(yield* randomUUIDv4("command-approval-request"));
@@ -2073,6 +2103,12 @@ export const makeCodexSessionRuntime = (
       }
       yield* settlePendingApprovals("cancel");
       yield* settlePendingUserInputs({});
+      const providerThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
+      if (providerThreadId) {
+        yield* client.raw
+          .request("thread/realtime/stop", { threadId: providerThreadId })
+          .pipe(Effect.ignore);
+      }
       yield* updateSession(sessionRef, {
         status: "closed",
         activeTurnId: undefined,
@@ -2180,6 +2216,42 @@ export const makeCodexSessionRuntime = (
             turnId: effectiveTurnId,
           });
         }),
+      startRealtimeVoice: (sdp) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const pending = yield* Deferred.make<string>();
+          const installed = yield* Ref.modify(pendingRealtimeSdpRef, (current) =>
+            current === null ? ([true, pending] as const) : ([false, current] as const),
+          );
+          if (!installed) {
+            return yield* CodexErrors.CodexAppServerRequestError.invalidRequest(
+              "A Codex realtime voice session is already connecting.",
+              { method: "thread/realtime/start" },
+            );
+          }
+
+          return yield* Effect.gen(function* () {
+            yield* client.raw.request(
+              "thread/realtime/start",
+              buildCodexRealtimeStartParams(providerThreadId, sdp),
+            );
+            const answer = yield* Deferred.await(pending).pipe(Effect.timeoutOption("20 seconds"));
+            if (Option.isNone(answer)) {
+              yield* client.raw
+                .request("thread/realtime/stop", { threadId: providerThreadId })
+                .pipe(Effect.ignore);
+              return yield* CodexErrors.CodexAppServerRequestError.invalidRequest(
+                "Codex realtime voice did not return an SDP answer.",
+                { method: "thread/realtime/start" },
+              );
+            }
+            return answer.value;
+          }).pipe(Effect.ensuring(Ref.set(pendingRealtimeSdpRef, null)));
+        }),
+      stopRealtimeVoice: Effect.gen(function* () {
+        const providerThreadId = yield* readProviderThreadId;
+        yield* client.raw.request("thread/realtime/stop", { threadId: providerThreadId });
+      }),
       readThread: Effect.gen(function* () {
         const providerThreadId = yield* readProviderThreadId;
         const response = yield* client.request("thread/read", {

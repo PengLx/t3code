@@ -108,6 +108,11 @@ import {
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
+import {
+  type CodexRealtimeVoiceController,
+  supportsCodexRealtimeVoiceVersion,
+} from "../../hooks/useCodexRealtimeVoice";
+import { ComposerVoiceControl } from "./ComposerVoiceControl";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -614,6 +619,7 @@ export interface ChatComposerProps {
   providerStatuses: ServerProvider[];
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
+  codexRealtimeVoice: CodexRealtimeVoiceController;
 
   // Context window
   activeContextWindow: ContextWindowSnapshot | null;
@@ -710,6 +716,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerStatuses,
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
+    codexRealtimeVoice,
     activeContextWindow,
     compactDisabled,
     compactDisabledReason,
@@ -945,6 +952,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const selectedProviderStatus = useMemo(
     () => selectedProviderEntry?.snapshot ?? null,
     [selectedProviderEntry],
+  );
+  const codexRealtimeVoiceVersionSupported = supportsCodexRealtimeVoiceVersion(
+    selectedProviderStatus?.version ?? null,
   );
   const selectedProviderModels = useMemo<ReadonlyArray<ServerProvider["models"][number]>>(
     () => selectedProviderEntry?.models ?? [],
@@ -3555,6 +3565,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                   {showMobilePendingAnswerActions ? null : inlineStashBadge}
+                  {selectedProvider === ProviderDriverKind.make("codex") && activeThreadId ? (
+                    <ComposerVoiceControl
+                      voice={codexRealtimeVoice}
+                      disabled={
+                        environmentUnavailable !== null ||
+                        isConnecting ||
+                        noProviderAvailable ||
+                        projectSelectionRequired ||
+                        !codexRealtimeVoiceVersionSupported
+                      }
+                      {...(!codexRealtimeVoiceVersionSupported
+                        ? { disabledReason: "Update Codex to 0.145.0 or newer to use voice" }
+                        : {})}
+                    />
+                  ) : null}
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     activeContextWindow={activeContextWindow}

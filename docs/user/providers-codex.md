@@ -34,6 +34,22 @@ In an existing Codex thread, send `/feedback` or `/feedback` followed by a descr
 issue. T3 Code uploads the thread and Codex logs to OpenAI and shows a thread ID that you can copy
 and share with OpenAI employees.
 
+## Talk to Codex
+
+Codex threads have a microphone button beside the send button in the web and desktop apps. Select
+it, allow microphone access when prompted, and start talking. The compact voice control shows when
+the connection is live and lets you mute your microphone or end the conversation.
+
+Voice uses Codex's native realtime session for the current thread, so the conversation stays with
+the same Codex account and workspace as the text chat. It requires a Codex version that supports
+realtime voice, a working microphone, and WebRTC access from the client. If the microphone button
+turns red, hover it for the connection or permission error and select it to retry.
+
+Browsers only expose microphones to secure pages, so remote web connections need HTTPS. Local
+`localhost` pages and the desktop app are treated as secure contexts.
+
+The native iOS and Android apps do not show this control yet.
+
 ## Approve access to other apps
 
 When a Codex tool needs access to an app such as Safari, T3 Code shows the app name and asks for

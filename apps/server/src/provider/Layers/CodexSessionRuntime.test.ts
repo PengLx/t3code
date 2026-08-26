@@ -16,6 +16,7 @@ import {
 } from "../CodexDeveloperInstructions.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import {
+  buildCodexRealtimeStartParams,
   buildTurnStartParams,
   describeMcpElicitation,
   hasConfiguredMcpServer,
@@ -25,6 +26,17 @@ import {
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
+
+describe("buildCodexRealtimeStartParams", () => {
+  it("uses Codex's v3 WebRTC audio transport", () => {
+    NodeAssert.deepStrictEqual(buildCodexRealtimeStartParams("provider-thread-1", "offer-sdp"), {
+      threadId: "provider-thread-1",
+      outputModality: "audio",
+      version: "v3",
+      transport: { type: "webrtc", sdp: "offer-sdp" },
+    });
+  });
+});
 
 describe("CodexSessionRuntimeIdentifierGenerationError", () => {
   it("retains identifier purpose and the random source failure", () => {

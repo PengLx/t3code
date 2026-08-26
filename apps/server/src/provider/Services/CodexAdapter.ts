@@ -17,6 +17,12 @@ import type { ProviderAdapterShape } from "./ProviderAdapter.ts";
  * a branded driver kind as the nominal discriminant.
  */
 export interface CodexAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
+  readonly startRealtimeVoice: NonNullable<
+    ProviderAdapterShape<ProviderAdapterError>["startRealtimeVoice"]
+  >;
+  readonly stopRealtimeVoice: NonNullable<
+    ProviderAdapterShape<ProviderAdapterError>["stopRealtimeVoice"]
+  >;
   readonly uploadFeedback: NonNullable<
     ProviderAdapterShape<ProviderAdapterError>["uploadFeedback"]
   >;
