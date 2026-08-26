@@ -3495,6 +3495,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             />
 
             {(isComposerCollapsedMobile || isComposerApprovalState) &&
+            !showMobilePendingAnswerActions &&
             isCodexRealtimeVoiceActive ? (
               <div
                 data-chat-composer-voice-fallback="true"
