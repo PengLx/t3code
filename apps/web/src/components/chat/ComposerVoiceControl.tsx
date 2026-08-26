@@ -40,7 +40,7 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
           size="icon-sm"
           variant="ghost"
           className={cn(
-            "rounded-full text-secondary-label hover:text-foreground",
+            "rounded-full text-secondary-label [--control-icon-color:currentColor] hover:text-foreground",
             voice.status === "error" && "text-destructive hover:text-destructive",
           )}
           disabled={props.disabled || !voice.supported}
@@ -75,7 +75,7 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="rounded-full text-secondary-label hover:text-foreground"
+          className="rounded-full text-secondary-label [--control-icon-color:currentColor] hover:text-foreground"
           disabled={voice.status === "connecting"}
           onPointerDown={preserveComposerFocus}
           onClick={voice.toggleMuted}
@@ -89,7 +89,7 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="rounded-full text-destructive [--control-icon-color:currentColor] hover:bg-destructive/10 hover:text-destructive"
           onPointerDown={preserveComposerFocus}
           onClick={() => void voice.stop()}
           aria-label="End Codex voice"

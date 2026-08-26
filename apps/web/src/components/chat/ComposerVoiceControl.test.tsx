@@ -35,6 +35,7 @@ describe("ComposerVoiceControl", () => {
 
     expect(markup).toContain('aria-label="Talk to Codex"');
     expect(markup).toContain('data-codex-voice-state="idle"');
+    expect(markup).toContain("[--control-icon-color:currentColor]");
   });
 
   it("shows mute and end actions while voice is live", () => {
@@ -45,6 +46,7 @@ describe("ComposerVoiceControl", () => {
     expect(markup).toContain("Voice live");
     expect(markup).toContain('aria-label="Mute microphone"');
     expect(markup).toContain('aria-label="End Codex voice"');
+    expect(markup.match(/\[--control-icon-color:currentColor\]/g)).toHaveLength(2);
   });
 
   it("renders the muted state without hiding the end action", () => {
