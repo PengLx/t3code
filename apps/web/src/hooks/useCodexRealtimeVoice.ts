@@ -5,7 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 
-export type CodexRealtimeVoiceStatus = "idle" | "connecting" | "live" | "error";
+export type CodexRealtimeVoiceStatus =
+  | "idle"
+  | "connecting"
+  | "live"
+  | "playback-blocked"
+  | "error";
 
 export interface CodexRealtimeVoiceController {
   readonly supported: boolean;
@@ -14,6 +19,7 @@ export interface CodexRealtimeVoiceController {
   readonly error: string | null;
   readonly start: () => Promise<void>;
   readonly stop: () => Promise<void>;
+  readonly resumeAudio: () => Promise<void>;
   readonly toggleMuted: () => void;
 }
 
@@ -24,6 +30,7 @@ interface LocalVoiceSession {
   readonly audio: HTMLAudioElement;
   readonly abort: AbortController;
   readonly microphoneEnded: EventListener;
+  readonly playbackBlocked: { current: boolean };
 }
 
 const ICE_GATHERING_TIMEOUT_MS = 15_000;
@@ -169,6 +176,7 @@ export function useCodexRealtimeVoice(input: {
       const events = peer.createDataChannel("oai-events");
       const audio = new Audio();
       const abort = new AbortController();
+      const playbackBlocked = { current: false };
       audio.autoplay = true;
       audio.setAttribute("playsinline", "");
       microphone.getAudioTracks().forEach((track) => peer.addTrack(track, microphone));
@@ -195,6 +203,7 @@ export function useCodexRealtimeVoice(input: {
         audio,
         abort,
         microphoneEnded,
+        playbackBlocked,
       } satisfies LocalVoiceSession;
       localSessionRef.current = session;
       microphone.getAudioTracks().forEach((track) => {
@@ -202,14 +211,19 @@ export function useCodexRealtimeVoice(input: {
       });
       peer.ontrack = (event) => {
         audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
-        void audio
-          .play()
-          .catch(() => failSession("Codex voice audio playback was blocked. Try again."));
+        void audio.play().catch(() => {
+          if (generationRef.current !== generation || localSessionRef.current?.peer !== peer) {
+            return;
+          }
+          playbackBlocked.current = true;
+          setStatus("playback-blocked");
+          setError("Codex audio is paused. Tap the speaker to resume.");
+        });
       };
       peer.onconnectionstatechange = () => {
         if (generationRef.current !== generation) return;
         if (peer.connectionState === "connected") {
-          setStatus("live");
+          setStatus(playbackBlocked.current ? "playback-blocked" : "live");
           return;
         }
         if (peer.connectionState !== "failed") return;
@@ -241,7 +255,7 @@ export function useCodexRealtimeVoice(input: {
 
       remoteStartedRef.current = true;
       await peer.setRemoteDescription({ type: "answer", sdp: result.value.sdp });
-      setStatus("live");
+      setStatus(playbackBlocked.current ? "playback-blocked" : "live");
     } catch (cause) {
       if (generationRef.current !== generation) return;
       generationRef.current += 1;
@@ -275,6 +289,23 @@ export function useCodexRealtimeVoice(input: {
     setMuted(nextMuted);
   }, []);
 
+  const resumeAudio = useCallback(async () => {
+    const session = localSessionRef.current;
+    if (!session) return;
+    try {
+      await session.audio.play();
+      if (localSessionRef.current !== session) return;
+      session.playbackBlocked.current = false;
+      setStatus("live");
+      setError(null);
+    } catch {
+      if (localSessionRef.current !== session) return;
+      session.playbackBlocked.current = true;
+      setStatus("playback-blocked");
+      setError("Codex audio is still paused. Check this site's autoplay permission.");
+    }
+  }, []);
+
   useEffect(() => {
     if (!input.enabled) {
       void stop();
@@ -300,5 +331,5 @@ export function useCodexRealtimeVoice(input: {
     };
   }, [clearLocalSession, input.environmentId, input.threadId, stopRemoteVoice]);
 
-  return { supported, status, muted, error, start, stop, toggleMuted };
+  return { supported, status, muted, error, start, stop, resumeAudio, toggleMuted };
 }

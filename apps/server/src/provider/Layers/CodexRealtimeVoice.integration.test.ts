@@ -123,9 +123,8 @@ describe("CodexSessionRuntime realtime voice", () => {
   runtimeTest(
     "does not start a retry while the prior stop is unresolved",
     {
-      realtimeStarts: [{ started: true }, { sdp: "must-not-start" }],
-      hangRealtimeStop: true,
-      realtimeStopStarted: true,
+      realtimeStarts: [{ started: true }, { sdp: "recovered-answer" }],
+      realtimeStops: [{ hangRequest: true, started: true }, {}],
     },
     (runtime, scriptPath) =>
       Effect.gen(function* () {
@@ -157,6 +156,79 @@ describe("CodexSessionRuntime realtime voice", () => {
         }
         const starts = NodeFS.readFileSync(`${scriptPath}.realtime-starts`, "utf8");
         assert.lengthOf(starts.trim().split("\n"), 1);
+
+        const answer = yield* runtime.startRealtimeVoice("recovered-offer");
+        assert.equal(answer, "recovered-answer");
+      }),
+  );
+
+  runtimeTest(
+    "recovers when the caller interrupts an in-flight stop",
+    {
+      realtimeStarts: [{ sdp: "first-answer" }, { sdp: "recovered-answer" }],
+      realtimeStops: [{ hangRequest: true, started: true }, {}],
+    },
+    (runtime, scriptPath) =>
+      Effect.gen(function* () {
+        yield* runtime.startRealtimeVoice("first-offer");
+        const stopObserved = yield* runtime.events.pipe(
+          Stream.filter((event) => event.method === "thread/realtime/started"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped,
+        );
+        const stop = yield* runtime.stopRealtimeVoice.pipe(Effect.forkScoped);
+        yield* Fiber.join(stopObserved);
+
+        yield* Fiber.interrupt(stop);
+
+        const answer = yield* runtime.startRealtimeVoice("recovered-offer");
+        assert.equal(answer, "recovered-answer");
+        const stops = NodeFS.readFileSync(`${scriptPath}.realtime-stops`, "utf8");
+        assert.lengthOf(stops.trim().split("\n"), 2);
+      }),
+  );
+
+  runtimeTest(
+    "allows a retry after a definitive stop error response",
+    {
+      realtimeStarts: [{ started: true }, { sdp: "retry-answer" }],
+      realtimeStops: [{ error: "no live realtime session" }],
+    },
+    (runtime) =>
+      Effect.gen(function* () {
+        const started = yield* runtime.events.pipe(
+          Stream.filter((event) => event.method === "thread/realtime/started"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped,
+        );
+        const firstStart = yield* runtime.startRealtimeVoice("first-offer").pipe(Effect.forkScoped);
+        yield* Fiber.join(started);
+
+        const stop = yield* Effect.exit(runtime.stopRealtimeVoice);
+        assert.isTrue(Exit.isFailure(stop));
+        yield* Fiber.await(firstStart);
+
+        const answer = yield* runtime.startRealtimeVoice("retry-offer");
+        assert.equal(answer, "retry-answer");
+      }),
+  );
+
+  runtimeTest(
+    "does not start realtime voice after the runtime closes",
+    { realtimeStarts: [{ sdp: "must-not-start" }] },
+    (runtime, scriptPath) =>
+      Effect.gen(function* () {
+        yield* runtime.close;
+
+        const exit = yield* Effect.exit(runtime.startRealtimeVoice("offer-sdp"));
+
+        assert.isTrue(Exit.isFailure(exit));
+        if (Exit.isFailure(exit)) {
+          assert.instanceOf(Cause.squash(exit.cause), CodexSessionRuntimeRealtimeVoiceStoppedError);
+        }
+        assert.isFalse(NodeFS.existsSync(`${scriptPath}.realtime-starts`));
       }),
   );
 

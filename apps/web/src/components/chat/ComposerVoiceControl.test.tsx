@@ -16,6 +16,7 @@ const makeVoice = (
   error: null,
   start: async () => {},
   stop: async () => {},
+  resumeAudio: async () => {},
   toggleMuted: () => {},
   ...overrides,
 });
@@ -58,5 +59,22 @@ describe("ComposerVoiceControl", () => {
     expect(markup).toContain("Muted");
     expect(markup).toContain('aria-label="Unmute microphone"');
     expect(markup).toContain('aria-label="End Codex voice"');
+  });
+
+  it("keeps a blocked audio session live and offers a playback retry", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerVoiceControl
+        voice={makeVoice({
+          status: "playback-blocked",
+          error: "Codex audio is paused. Tap the speaker to resume.",
+        })}
+        disabled={false}
+      />,
+    );
+
+    expect(markup).toContain("Audio paused");
+    expect(markup).toContain('aria-label="Resume Codex audio"');
+    expect(markup).toContain('aria-label="End Codex voice"');
+    expect(markup).toContain("bg-warning");
   });
 });

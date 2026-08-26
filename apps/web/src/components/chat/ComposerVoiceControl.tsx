@@ -1,5 +1,5 @@
 import { memo, type PointerEventHandler, type ReactElement } from "react";
-import { MicIcon, MicOffIcon, PhoneOffIcon } from "lucide-react";
+import { MicIcon, MicOffIcon, PhoneOffIcon, Volume2Icon } from "lucide-react";
 
 import type { CodexRealtimeVoiceController } from "~/hooks/useCodexRealtimeVoice";
 import { cn } from "~/lib/utils";
@@ -25,7 +25,8 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
   readonly disabledReason?: string;
 }) {
   const { voice } = props;
-  const active = voice.status === "connecting" || voice.status === "live";
+  const active =
+    voice.status === "connecting" || voice.status === "live" || voice.status === "playback-blocked";
 
   if (!active) {
     const tooltip = !voice.supported
@@ -56,7 +57,13 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
   }
 
   const label =
-    voice.status === "connecting" ? "Connecting…" : voice.muted ? "Muted" : "Voice live";
+    voice.status === "connecting"
+      ? "Connecting…"
+      : voice.status === "playback-blocked"
+        ? "Audio paused"
+        : voice.muted
+          ? "Muted"
+          : "Voice live";
   return (
     <div
       className="flex h-8 items-center gap-0.5 rounded-full border border-border/70 bg-muted/50 ps-2 pe-1"
@@ -66,10 +73,29 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
         aria-hidden="true"
         className={cn(
           "me-1 size-1.5 rounded-full",
-          voice.status === "connecting" ? "bg-muted-foreground" : "bg-success",
+          voice.status === "connecting"
+            ? "bg-muted-foreground"
+            : voice.status === "playback-blocked"
+              ? "bg-warning"
+              : "bg-success",
         )}
       />
       <span className="hidden text-xs text-secondary-label sm:inline">{label}</span>
+      {voice.status === "playback-blocked" ? (
+        <VoiceButtonTooltip label={voice.error ?? "Resume Codex audio"}>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            className="rounded-full text-warning [--control-icon-color:currentColor] hover:text-warning"
+            onPointerDown={preserveComposerFocus}
+            onClick={() => void voice.resumeAudio()}
+            aria-label="Resume Codex audio"
+          >
+            <Volume2Icon className="size-3.5" />
+          </Button>
+        </VoiceButtonTooltip>
+      ) : null}
       <VoiceButtonTooltip label={voice.muted ? "Unmute microphone" : "Mute microphone"}>
         <Button
           type="button"

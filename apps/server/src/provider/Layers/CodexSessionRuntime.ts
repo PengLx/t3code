@@ -1337,63 +1337,83 @@ export const makeCodexSessionRuntime = (
       error: CodexSessionRuntimeError,
       pending?: PendingRealtimeVoice,
     ) =>
-      Effect.gen(function* () {
-        const done = yield* Deferred.make<void, CodexSessionRuntimeError>();
-        const decision = yield* Ref.modify<RealtimeVoiceState | null, RealtimeVoiceStopDecision>(
-          realtimeVoiceStateRef,
-          (current) => {
-            if (current?._tag === "stopping" && current.providerThreadId === providerThreadId) {
-              return [{ _tag: "follow", done: current.done } as const, current];
-            }
-            if (pending && (current?._tag !== "pending" || current.answer !== pending.answer)) {
-              return [{ _tag: "skip" } as const, current];
-            }
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const done = yield* Deferred.make<void, CodexSessionRuntimeError>();
+          const decision = yield* Ref.modify<RealtimeVoiceState | null, RealtimeVoiceStopDecision>(
+            realtimeVoiceStateRef,
+            (current) => {
+              if (current?._tag === "stopping" && current.providerThreadId === providerThreadId) {
+                return [{ _tag: "follow", done: current.done } as const, current];
+              }
+              if (pending && (current?._tag !== "pending" || current.answer !== pending.answer)) {
+                return [{ _tag: "skip" } as const, current];
+              }
 
-            const stopping = {
-              _tag: "stopping",
-              providerThreadId,
-              done,
-            } satisfies StoppingRealtimeVoice;
-            return [
-              {
-                _tag: "lead",
-                pending: current?._tag === "pending" ? current : null,
+              const stopping = {
+                _tag: "stopping",
+                providerThreadId,
+                done,
+              } satisfies StoppingRealtimeVoice;
+              return [
+                {
+                  _tag: "lead",
+                  pending: current?._tag === "pending" ? current : null,
+                  stopping,
+                } as const,
                 stopping,
-              } as const,
-              stopping,
-            ];
-          },
-        );
-
-        if (decision._tag === "skip") return;
-        if (decision._tag === "follow") {
-          return yield* Deferred.await(decision.done);
-        }
-        if (decision.pending) {
-          yield* Deferred.fail(decision.pending.answer, error);
-        }
-
-        const result = yield* Effect.result(
-          Effect.raceFirst(requestRealtimeVoiceStop(providerThreadId), Deferred.await(done)),
-        );
-        if (Result.isFailure(result)) {
-          const failed = {
-            _tag: "stopFailed",
-            providerThreadId,
-            error: result.failure,
-          } satisfies FailedRealtimeVoiceStop;
-          yield* Ref.update(realtimeVoiceStateRef, (current) =>
-            current?._tag === "stopping" && current.done === done ? failed : current,
+              ];
+            },
           );
-          yield* Deferred.fail(done, result.failure);
-          return yield* result.failure;
-        }
 
-        yield* Ref.update(realtimeVoiceStateRef, (current) =>
-          current?._tag === "stopping" && current.done === done ? null : current,
-        );
-        yield* Deferred.succeed(done, undefined);
-      });
+          if (decision._tag === "skip") return;
+          if (decision._tag === "follow") {
+            return yield* restore(Deferred.await(decision.done));
+          }
+          if (decision.pending) {
+            yield* Deferred.fail(decision.pending.answer, error);
+          }
+
+          const settleFailedStop = (failure: CodexSessionRuntimeError, blockRetry: boolean) => {
+            const failed = {
+              _tag: "stopFailed",
+              providerThreadId,
+              error: failure,
+            } satisfies FailedRealtimeVoiceStop;
+            return Ref.update(realtimeVoiceStateRef, (current) =>
+              current?._tag === "stopping" && current.done === done
+                ? blockRetry
+                  ? failed
+                  : null
+                : current,
+            ).pipe(Effect.andThen(Deferred.fail(done, failure)), Effect.asVoid);
+          };
+          const result = yield* Effect.result(
+            restore(
+              Effect.raceFirst(requestRealtimeVoiceStop(providerThreadId), Deferred.await(done)),
+            ).pipe(
+              Effect.onInterrupt(() =>
+                settleFailedStop(
+                  new CodexSessionRuntimeRealtimeVoiceStoppedError({ providerThreadId }),
+                  true,
+                ),
+              ),
+            ),
+          );
+          if (Result.isFailure(result)) {
+            yield* settleFailedStop(
+              result.failure,
+              result.failure._tag === "CodexSessionRuntimeRealtimeVoiceStopTimeoutError",
+            );
+            return yield* result.failure;
+          }
+
+          yield* Ref.update(realtimeVoiceStateRef, (current) =>
+            current?._tag === "stopping" && current.done === done ? null : current,
+          );
+          yield* Deferred.succeed(done, undefined);
+        }),
+      );
 
     // `~` is not shell-expanded when env vars are set via
     // `child_process.spawn`; `expandHomePath` lets a configured
@@ -2505,6 +2525,16 @@ export const makeCodexSessionRuntime = (
       startRealtimeVoice: (sdp) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;
+          const stoppedError = new CodexSessionRuntimeRealtimeVoiceStoppedError({
+            providerThreadId,
+          });
+          if (yield* Ref.get(closedRef)) {
+            return yield* stoppedError;
+          }
+          const previousState = yield* Ref.get(realtimeVoiceStateRef);
+          if (previousState?._tag === "stopFailed") {
+            yield* coordinateRealtimeVoiceStop(providerThreadId, stoppedError);
+          }
           const answer = yield* Deferred.make<string, CodexSessionRuntimeError>();
           const pending = {
             _tag: "pending",
@@ -2516,6 +2546,12 @@ export const makeCodexSessionRuntime = (
             return yield* new CodexSessionRuntimeRealtimeVoiceAlreadyStartingError({
               providerThreadId,
             });
+          }
+          if (yield* Ref.get(closedRef)) {
+            yield* coordinateRealtimeVoiceStop(providerThreadId, stoppedError, pending).pipe(
+              Effect.ignore,
+            );
+            return yield* stoppedError;
           }
 
           const result = yield* Effect.raceFirst(
@@ -2531,11 +2567,9 @@ export const makeCodexSessionRuntime = (
             Effect.onExit((exit) =>
               Exit.isSuccess(exit) && Option.isSome(exit.value)
                 ? Effect.void
-                : coordinateRealtimeVoiceStop(
-                    providerThreadId,
-                    new CodexSessionRuntimeRealtimeVoiceStoppedError({ providerThreadId }),
-                    pending,
-                  ).pipe(Effect.ignore),
+                : coordinateRealtimeVoiceStop(providerThreadId, stoppedError, pending).pipe(
+                    Effect.ignore,
+                  ),
             ),
           );
           if (Option.isNone(result)) {
@@ -2546,7 +2580,8 @@ export const makeCodexSessionRuntime = (
           }
           const completed = yield* completePendingRealtimeVoice(pending);
           if (!completed) {
-            return yield* new CodexSessionRuntimeRealtimeVoiceStoppedError({ providerThreadId });
+            yield* coordinateRealtimeVoiceStop(providerThreadId, stoppedError).pipe(Effect.ignore);
+            return yield* stoppedError;
           }
           return result.value;
         }),

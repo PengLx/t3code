@@ -18,6 +18,7 @@ const script = JSON.parse(NodeFS.readFileSync(process.env.T3_CODEX_COLLAB_SCRIPT
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 let turnStartCount = 0;
 let realtimeStartCount = 0;
+let realtimeStopCount = 0;
 let activeTurn;
 
 const rl = NodeReadline.createInterface({ input: process.stdin });
@@ -173,21 +174,24 @@ rl.on("line", (line) => {
     return;
   }
   if (method === "thread/realtime/stop") {
+    const realtimeStop = script.realtimeStops?.[realtimeStopCount] ?? {};
+    realtimeStopCount += 1;
     NodeFS.appendFileSync(
       `${process.env.T3_CODEX_COLLAB_SCRIPT}.realtime-stops`,
       `${JSON.stringify(message.params)}\n`,
     );
-    if (typeof script.realtimeStopSdp === "string") {
+    const stopSdp = realtimeStop.sdp ?? script.realtimeStopSdp;
+    if (typeof stopSdp === "string") {
       write({
         jsonrpc: "2.0",
         method: "thread/realtime/sdp",
         params: {
           threadId: message.params?.threadId ?? script.rootThreadId,
-          sdp: script.realtimeStopSdp,
+          sdp: stopSdp,
         },
       });
     }
-    if (script.realtimeStopStarted === true) {
+    if (realtimeStop.started === true || script.realtimeStopStarted === true) {
       write({
         jsonrpc: "2.0",
         method: "thread/realtime/started",
@@ -198,7 +202,9 @@ rl.on("line", (line) => {
         },
       });
     }
-    if (script.hangRealtimeStop !== true) {
+    if (typeof realtimeStop.error === "string") {
+      write({ id, error: { code: -32000, message: realtimeStop.error } });
+    } else if (realtimeStop.hangRequest !== true && script.hangRealtimeStop !== true) {
       write({ id, result: {} });
     }
     return;
