@@ -3499,7 +3499,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             isCodexRealtimeVoiceActive ? (
               <div
                 data-chat-composer-voice-fallback="true"
-                className="flex items-center justify-end px-3 pb-3 sm:px-4 sm:pb-4"
+                className={cn(
+                  "flex items-center justify-end px-3 pb-3 sm:px-4 sm:pb-4",
+                  isComposerCollapsedMobile && "pt-3",
+                )}
               >
                 {codexVoiceControl}
               </div>
