@@ -1,4 +1,5 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { threadEnvironment } from "../state/threads";
@@ -21,9 +22,10 @@ interface LocalVoiceSession {
   readonly microphone: MediaStream;
   readonly events: RTCDataChannel;
   readonly audio: HTMLAudioElement;
+  readonly abort: AbortController;
 }
 
-const ICE_GATHERING_TIMEOUT_MS = 5_000;
+const ICE_GATHERING_TIMEOUT_MS = 15_000;
 const MINIMUM_CODEX_REALTIME_VOICE_VERSION = [0, 145, 0] as const;
 
 export function supportsCodexRealtimeVoiceVersion(version: string | null): boolean {
@@ -40,22 +42,33 @@ export function supportsCodexRealtimeVoiceVersion(version: string | null): boole
   return true;
 }
 
-function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
+export function waitForIceGathering(peer: RTCPeerConnection, signal: AbortSignal): Promise<void> {
   if (peer.iceGatheringState === "complete") {
     return Promise.resolve();
   }
+  if (signal.aborted) {
+    return Promise.reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+  }
 
-  return new Promise((resolve) => {
-    const finish = () => {
-      window.clearTimeout(timeoutId);
+  return new Promise((resolve, reject) => {
+    const finish = (cause?: unknown) => {
+      globalThis.clearTimeout(timeoutId);
       peer.removeEventListener("icegatheringstatechange", handleStateChange);
-      resolve();
+      signal.removeEventListener("abort", handleAbort);
+      if (cause === undefined) resolve();
+      else reject(cause);
     };
     const handleStateChange = () => {
       if (peer.iceGatheringState === "complete") finish();
     };
-    const timeoutId = window.setTimeout(finish, ICE_GATHERING_TIMEOUT_MS);
+    const handleAbort = () => finish(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    const timeoutId = globalThis.setTimeout(
+      () => finish(new Error("WebRTC ICE gathering timed out.")),
+      ICE_GATHERING_TIMEOUT_MS,
+    );
     peer.addEventListener("icegatheringstatechange", handleStateChange);
+    signal.addEventListener("abort", handleAbort, { once: true });
+    if (signal.aborted) handleAbort();
   });
 }
 
@@ -69,6 +82,7 @@ function voiceErrorMessage(cause: unknown): string {
 
 function disposeLocalSession(session: LocalVoiceSession | null): void {
   if (!session) return;
+  session.abort.abort();
   session.peer.onconnectionstatechange = null;
   session.peer.ontrack = null;
   session.events.close();
@@ -150,11 +164,12 @@ export function useCodexRealtimeVoice(input: {
       const peer = new RTCPeerConnection();
       const events = peer.createDataChannel("oai-events");
       const audio = new Audio();
+      const abort = new AbortController();
       audio.autoplay = true;
       audio.setAttribute("playsinline", "");
       microphone.getAudioTracks().forEach((track) => peer.addTrack(track, microphone));
 
-      const session = { peer, microphone, events, audio } satisfies LocalVoiceSession;
+      const session = { peer, microphone, events, audio, abort } satisfies LocalVoiceSession;
       localSessionRef.current = session;
       peer.ontrack = (event) => {
         audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
@@ -181,7 +196,7 @@ export function useCodexRealtimeVoice(input: {
 
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
-      await waitForIceGathering(peer);
+      await waitForIceGathering(peer, abort.signal);
       const localSdp = peer.localDescription?.sdp;
       if (!localSdp) throw new Error("WebRTC did not produce a local session description.");
 
@@ -197,7 +212,9 @@ export function useCodexRealtimeVoice(input: {
         return;
       }
       if (result._tag !== "Success") {
-        throw new Error("Codex rejected the realtime voice session.");
+        throw new Error("Codex rejected the realtime voice session.", {
+          cause: squashAtomCommandFailure(result),
+        });
       }
 
       remoteStartedRef.current = true;
@@ -237,15 +254,19 @@ export function useCodexRealtimeVoice(input: {
   }, []);
 
   useEffect(() => {
-    if (!input.enabled && (localSessionRef.current || remoteStartedRef.current)) {
+    if (!input.enabled) {
       void stop();
     }
   }, [input.enabled, stop]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    setStatus("idle");
+    setMuted(false);
+    setError(null);
+
+    return () => {
       generationRef.current += 1;
-      const shouldStopRemote = remoteStartedRef.current;
+      const shouldStopRemote = remoteStartedRef.current || localSessionRef.current !== null;
       remoteStartedRef.current = false;
       clearLocalSession();
       if (shouldStopRemote && input.threadId) {
@@ -254,9 +275,8 @@ export function useCodexRealtimeVoice(input: {
           input: { threadId: input.threadId },
         });
       }
-    },
-    [clearLocalSession, input.environmentId, input.threadId, stopRemoteVoice],
-  );
+    };
+  }, [clearLocalSession, input.environmentId, input.threadId, stopRemoteVoice]);
 
   return { supported, status, muted, error, start, stop, toggleMuted };
 }

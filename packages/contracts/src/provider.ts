@@ -147,7 +147,6 @@ export class ProviderRealtimeVoiceError extends Schema.TaggedErrorClass<Provider
   {
     threadId: ThreadId,
     operation: Schema.Literals(["start", "stop"]),
-    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {

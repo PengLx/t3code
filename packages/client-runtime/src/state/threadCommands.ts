@@ -214,13 +214,13 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:start-realtime-voice",
       tag: WS_METHODS.providerRealtimeVoiceStart,
       scheduler,
-      concurrency,
+      concurrency: { mode: "parallel" },
     }),
     stopRealtimeVoice: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:commands:thread:stop-realtime-voice",
       tag: WS_METHODS.providerRealtimeVoiceStop,
       scheduler,
-      concurrency,
+      concurrency: { mode: "parallel" },
     }),
   };
 }

@@ -47,6 +47,7 @@ describe("ComposerVoiceControl", () => {
     expect(markup).toContain('aria-label="Mute microphone"');
     expect(markup).toContain('aria-label="End Codex voice"');
     expect(markup.match(/\[--control-icon-color:currentColor\]/g)).toHaveLength(2);
+    expect(markup).toContain("bg-success");
   });
 
   it("renders the muted state without hiding the end action", () => {

@@ -1608,12 +1608,17 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.providerRealtimeVoiceStart,
             providerService.startRealtimeVoice(input).pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Failed to start provider realtime voice.", {
+                  threadId: input.threadId,
+                  cause,
+                }),
+              ),
               Effect.mapError(
-                (cause) =>
+                () =>
                   new ProviderRealtimeVoiceError({
                     threadId: input.threadId,
                     operation: "start",
-                    cause,
                   }),
               ),
             ),
@@ -1623,12 +1628,17 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.providerRealtimeVoiceStop,
             providerService.stopRealtimeVoice(input).pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Failed to stop provider realtime voice.", {
+                  threadId: input.threadId,
+                  cause,
+                }),
+              ),
               Effect.mapError(
-                (cause) =>
+                () =>
                   new ProviderRealtimeVoiceError({
                     threadId: input.threadId,
                     operation: "stop",
-                    cause,
                   }),
               ),
             ),

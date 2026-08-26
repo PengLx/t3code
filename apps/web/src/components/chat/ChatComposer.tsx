@@ -3565,7 +3565,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                   {showMobilePendingAnswerActions ? null : inlineStashBadge}
-                  {selectedProvider === ProviderDriverKind.make("codex") && activeThreadId ? (
+                  {routeKind === "server" &&
+                  selectedProvider === ProviderDriverKind.make("codex") &&
+                  activeThreadId ? (
                     <ComposerVoiceControl
                       voice={codexRealtimeVoice}
                       disabled={

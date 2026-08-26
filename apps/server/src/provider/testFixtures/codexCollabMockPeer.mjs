@@ -17,6 +17,7 @@ const script = JSON.parse(NodeFS.readFileSync(process.env.T3_CODEX_COLLAB_SCRIPT
 
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 let turnStartCount = 0;
+let realtimeStartCount = 0;
 let activeTurn;
 
 const rl = NodeReadline.createInterface({ input: process.stdin });
@@ -128,6 +129,57 @@ rl.on("line", (line) => {
       return;
     }
     write({ id, result: {} });
+    return;
+  }
+  if (method === "thread/realtime/start") {
+    const realtimeStart = script.realtimeStarts?.[realtimeStartCount] ?? {};
+    realtimeStartCount += 1;
+    NodeFS.appendFileSync(
+      `${process.env.T3_CODEX_COLLAB_SCRIPT}.realtime-starts`,
+      `${JSON.stringify(message.params)}\n`,
+    );
+    if (realtimeStart.hangRequest !== true) {
+      write({ id, result: {} });
+    }
+    const threadId = message.params?.threadId ?? script.rootThreadId;
+    if (realtimeStart.started === true) {
+      write({
+        jsonrpc: "2.0",
+        method: "thread/realtime/started",
+        params: { threadId, version: "v3", realtimeSessionId: `mock-${realtimeStartCount}` },
+      });
+    }
+    if (typeof realtimeStart.error === "string") {
+      write({
+        jsonrpc: "2.0",
+        method: "thread/realtime/error",
+        params: { threadId, message: realtimeStart.error },
+      });
+    }
+    if (typeof realtimeStart.closed === "string") {
+      write({
+        jsonrpc: "2.0",
+        method: "thread/realtime/closed",
+        params: { threadId, reason: realtimeStart.closed },
+      });
+    }
+    if (typeof realtimeStart.sdp === "string") {
+      write({
+        jsonrpc: "2.0",
+        method: "thread/realtime/sdp",
+        params: { threadId, sdp: realtimeStart.sdp },
+      });
+    }
+    return;
+  }
+  if (method === "thread/realtime/stop") {
+    NodeFS.appendFileSync(
+      `${process.env.T3_CODEX_COLLAB_SCRIPT}.realtime-stops`,
+      `${JSON.stringify(message.params)}\n`,
+    );
+    if (script.hangRealtimeStop !== true) {
+      write({ id, result: {} });
+    }
     return;
   }
   if (id !== undefined) {

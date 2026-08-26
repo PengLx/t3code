@@ -66,7 +66,7 @@ export const ComposerVoiceControl = memo(function ComposerVoiceControl(props: {
         aria-hidden="true"
         className={cn(
           "me-1 size-1.5 rounded-full",
-          voice.status === "connecting" ? "bg-muted-foreground" : "bg-emerald-500",
+          voice.status === "connecting" ? "bg-muted-foreground" : "bg-success",
         )}
       />
       <span className="hidden text-xs text-secondary-label sm:inline">{label}</span>

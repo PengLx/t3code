@@ -27,6 +27,7 @@ const decodeProviderRealtimeVoiceStartInput = Schema.decodeUnknownSync(
 const decodeProviderRealtimeVoiceStartResult = Schema.decodeUnknownSync(
   ProviderRealtimeVoiceStartResult,
 );
+const encodeProviderRealtimeVoiceError = Schema.encodeUnknownSync(ProviderRealtimeVoiceError);
 
 function getOptionValue(
   options: ReadonlyArray<{ id: string; value: unknown }> | undefined,
@@ -218,16 +219,19 @@ describe("provider realtime voice", () => {
     expect(() => decodeProviderRealtimeVoiceStartResult({ sdp: "" })).toThrow();
   });
 
-  it("does not expose upstream request details in its message", () => {
-    const cause = new Error("provider request secret");
+  it("does not encode upstream request details on the public RPC error", () => {
     const error = new ProviderRealtimeVoiceError({
       threadId: ThreadId.make("thread-1"),
       operation: "start",
-      cause,
     });
+    const encoded = encodeProviderRealtimeVoiceError(error);
 
     expect(error.message).toBe("Failed to start realtime voice for thread thread-1.");
-    expect(error.message).not.toContain("provider request secret");
+    expect(encoded).toEqual({
+      _tag: "ProviderRealtimeVoiceError",
+      threadId: "thread-1",
+      operation: "start",
+    });
   });
 });
 
