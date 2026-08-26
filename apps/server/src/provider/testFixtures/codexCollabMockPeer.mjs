@@ -177,6 +177,27 @@ rl.on("line", (line) => {
       `${process.env.T3_CODEX_COLLAB_SCRIPT}.realtime-stops`,
       `${JSON.stringify(message.params)}\n`,
     );
+    if (typeof script.realtimeStopSdp === "string") {
+      write({
+        jsonrpc: "2.0",
+        method: "thread/realtime/sdp",
+        params: {
+          threadId: message.params?.threadId ?? script.rootThreadId,
+          sdp: script.realtimeStopSdp,
+        },
+      });
+    }
+    if (script.realtimeStopStarted === true) {
+      write({
+        jsonrpc: "2.0",
+        method: "thread/realtime/started",
+        params: {
+          threadId: message.params?.threadId ?? script.rootThreadId,
+          version: "v3",
+          realtimeSessionId: "mock-stop-observed",
+        },
+      });
+    }
     if (script.hangRealtimeStop !== true) {
       write({ id, result: {} });
     }

@@ -19,6 +19,7 @@ import {
   CodexSessionRuntimeRealtimeVoiceAnswerTimeoutError,
   CodexSessionRuntimeRealtimeVoiceNegotiationError,
   CodexSessionRuntimeRealtimeVoiceStoppedError,
+  CodexSessionRuntimeRealtimeVoiceStopTimeoutError,
   makeCodexSessionRuntime,
   type CodexSessionRuntimeError,
 } from "./CodexSessionRuntime.ts";
@@ -68,8 +69,9 @@ describe("CodexSessionRuntime realtime voice", () => {
     "stops an in-flight negotiation and permits an immediate restart",
     {
       realtimeStarts: [{ started: true }, { sdp: "answer-sdp" }],
+      realtimeStopSdp: "stale-answer-sdp",
     },
-    (runtime) =>
+    (runtime, scriptPath) =>
       Effect.gen(function* () {
         const started = yield* runtime.events.pipe(
           Stream.filter((event) => event.method === "thread/realtime/started"),
@@ -89,6 +91,8 @@ describe("CodexSessionRuntime realtime voice", () => {
             CodexSessionRuntimeRealtimeVoiceStoppedError,
           );
         }
+        const stops = NodeFS.readFileSync(`${scriptPath}.realtime-stops`, "utf8");
+        assert.lengthOf(stops.trim().split("\n"), 1);
 
         const answer = yield* runtime.startRealtimeVoice("second-offer");
         assert.equal(answer, "answer-sdp");
@@ -113,6 +117,46 @@ describe("CodexSessionRuntime realtime voice", () => {
 
         const stops = NodeFS.readFileSync(`${scriptPath}.realtime-stops`, "utf8");
         assert.include(stops, wireFixture.rootThreadId);
+      }),
+  );
+
+  runtimeTest(
+    "does not start a retry while the prior stop is unresolved",
+    {
+      realtimeStarts: [{ started: true }, { sdp: "must-not-start" }],
+      hangRealtimeStop: true,
+      realtimeStopStarted: true,
+    },
+    (runtime, scriptPath) =>
+      Effect.gen(function* () {
+        const started = yield* runtime.events.pipe(
+          Stream.filter((event) => event.method === "thread/realtime/started"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped,
+        );
+        yield* runtime.startRealtimeVoice("first-offer").pipe(Effect.forkScoped);
+        yield* Fiber.join(started);
+
+        const stopObserved = yield* runtime.events.pipe(
+          Stream.filter((event) => event.method === "thread/realtime/started"),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped,
+        );
+        yield* runtime.stopRealtimeVoice.pipe(Effect.forkScoped);
+        yield* Fiber.join(stopObserved);
+        const retry = yield* Effect.exit(runtime.startRealtimeVoice("retry-offer"));
+
+        assert.isTrue(Exit.isFailure(retry));
+        if (Exit.isFailure(retry)) {
+          assert.instanceOf(
+            Cause.squash(retry.cause),
+            CodexSessionRuntimeRealtimeVoiceStopTimeoutError,
+          );
+        }
+        const starts = NodeFS.readFileSync(`${scriptPath}.realtime-starts`, "utf8");
+        assert.lengthOf(starts.trim().split("\n"), 1);
       }),
   );
 

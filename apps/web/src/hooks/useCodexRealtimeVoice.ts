@@ -23,6 +23,7 @@ interface LocalVoiceSession {
   readonly events: RTCDataChannel;
   readonly audio: HTMLAudioElement;
   readonly abort: AbortController;
+  readonly microphoneEnded: EventListener;
 }
 
 const ICE_GATHERING_TIMEOUT_MS = 15_000;
@@ -86,7 +87,10 @@ function disposeLocalSession(session: LocalVoiceSession | null): void {
   session.peer.onconnectionstatechange = null;
   session.peer.ontrack = null;
   session.events.close();
-  session.microphone.getTracks().forEach((track) => track.stop());
+  session.microphone.getTracks().forEach((track) => {
+    track.removeEventListener("ended", session.microphoneEnded);
+    track.stop();
+  });
   session.peer.close();
   session.audio.pause();
   session.audio.srcObject = null;
@@ -169,11 +173,38 @@ export function useCodexRealtimeVoice(input: {
       audio.setAttribute("playsinline", "");
       microphone.getAudioTracks().forEach((track) => peer.addTrack(track, microphone));
 
-      const session = { peer, microphone, events, audio, abort } satisfies LocalVoiceSession;
+      const failSession = (message: string) => {
+        if (generationRef.current !== generation || localSessionRef.current?.peer !== peer) {
+          return;
+        }
+        generationRef.current += 1;
+        remoteStartedRef.current = false;
+        clearLocalSession();
+        setStatus("error");
+        setError(message);
+        void stopRemoteVoice({
+          environmentId: input.environmentId,
+          input: { threadId },
+        });
+      };
+      const microphoneEnded = () => failSession("Microphone access was lost. Try again.");
+      const session = {
+        peer,
+        microphone,
+        events,
+        audio,
+        abort,
+        microphoneEnded,
+      } satisfies LocalVoiceSession;
       localSessionRef.current = session;
+      microphone.getAudioTracks().forEach((track) => {
+        track.addEventListener("ended", microphoneEnded);
+      });
       peer.ontrack = (event) => {
         audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
-        void audio.play().catch(() => undefined);
+        void audio
+          .play()
+          .catch(() => failSession("Codex voice audio playback was blocked. Try again."));
       };
       peer.onconnectionstatechange = () => {
         if (generationRef.current !== generation) return;
@@ -182,16 +213,7 @@ export function useCodexRealtimeVoice(input: {
           return;
         }
         if (peer.connectionState !== "failed") return;
-
-        generationRef.current += 1;
-        remoteStartedRef.current = false;
-        clearLocalSession();
-        setStatus("error");
-        setError("The Codex voice connection was lost.");
-        void stopRemoteVoice({
-          environmentId: input.environmentId,
-          input: { threadId },
-        });
+        failSession("The Codex voice connection was lost.");
       };
 
       const offer = await peer.createOffer();
